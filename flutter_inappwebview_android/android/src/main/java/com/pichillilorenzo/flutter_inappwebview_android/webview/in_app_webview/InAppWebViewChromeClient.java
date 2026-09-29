@@ -10,7 +10,6 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -136,14 +135,6 @@ public class InAppWebViewChromeClient extends WebChromeClient implements PluginR
   @Nullable
   @Override
   public Bitmap getDefaultVideoPoster() {
-    if (inAppWebView != null && inAppWebView.customSettings.defaultVideoPoster != null) {
-      final byte[] data = inAppWebView.customSettings.defaultVideoPoster;
-      BitmapFactory.Options bitmapOptions = new BitmapFactory.Options();
-      bitmapOptions.inMutable = true;
-      return BitmapFactory.decodeByteArray(
-              data, 0, data.length, bitmapOptions
-      );
-    }
     return Bitmap.createBitmap(50, 50, Bitmap.Config.ARGB_8888);
   }
 

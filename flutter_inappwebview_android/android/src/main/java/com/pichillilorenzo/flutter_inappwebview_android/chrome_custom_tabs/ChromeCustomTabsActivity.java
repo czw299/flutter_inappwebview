@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -312,17 +311,7 @@ public class ChromeCustomTabsActivity extends Activity implements Disposable {
               createPendingIntent(menuItem.getId()));
     }
 
-    if (actionButton != null) {
-      byte[] data = actionButton.getIcon();
-      BitmapFactory.Options bitmapOptions = new BitmapFactory.Options();
-      bitmapOptions.inMutable = true;
-      Bitmap bmp = BitmapFactory.decodeByteArray(
-              data, 0, data.length, bitmapOptions
-      );
-      builder.setActionButton(bmp, actionButton.getDescription(),
-              createPendingIntent(actionButton.getId()),
-              actionButton.isShouldTint());
-    }
+
 
     if (secondaryToolbar != null) {
       AndroidResource layout = secondaryToolbar.getLayout();
@@ -370,12 +359,7 @@ public class ChromeCustomTabsActivity extends Activity implements Disposable {
     if (customTabsSession == null || actionButton == null) {
       return;
     }
-    BitmapFactory.Options bitmapOptions = new BitmapFactory.Options();
-    bitmapOptions.inMutable = true;
-    Bitmap bmp = BitmapFactory.decodeByteArray(
-            icon, 0, icon.length, bitmapOptions
-    );
-    customTabsSession.setActionButton(bmp, description);
+
     actionButton.setIcon(icon);
     actionButton.setDescription(description);
   }

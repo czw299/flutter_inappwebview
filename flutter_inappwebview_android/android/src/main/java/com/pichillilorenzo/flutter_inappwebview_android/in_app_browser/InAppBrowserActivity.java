@@ -365,7 +365,6 @@ public class InAppBrowserActivity extends AppCompatActivity implements InAppBrow
         if (icon instanceof AndroidResource) {
           item.setIcon(((AndroidResource) icon).getIdentifier(this));
         } else {
-          item.setIcon(Util.drawableFromBytes(this, (byte[]) icon));
         }
         String iconColor = menuItem.getIconColor();
         if (iconColor != null && !iconColor.isEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {

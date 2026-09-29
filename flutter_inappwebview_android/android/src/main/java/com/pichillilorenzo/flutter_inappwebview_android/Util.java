@@ -2,7 +2,6 @@ package com.pichillilorenzo.flutter_inappwebview_android;
 
 import android.content.Context;
 import android.content.res.AssetManager;
-import android.graphics.BitmapFactory;
 import android.graphics.Insets;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
@@ -378,9 +377,5 @@ public class Util {
       }
     }
     return null;
-  }
-
-  public static Drawable drawableFromBytes(Context context, byte[] data) {
-    return new BitmapDrawable(context.getResources(), BitmapFactory.decodeByteArray(data, 0, data.length));
   }
 }
