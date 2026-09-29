@@ -33,6 +33,13 @@ namespace flutter_inappwebview_plugin
     void UnregisterMethodCallHandler() const;
   private:
     HWND hwnd_;
+    HWND flutter_view_hwnd_ = nullptr;
+    bool native_focus_ = false;
+    EventRegistrationToken got_focus_token_ = {};
+    EventRegistrationToken lost_focus_token_ = {};
+    EventRegistrationToken move_focus_token_ = {};
+    void RegisterFocusHandlers();
+    void ReleaseFocus();
     std::unique_ptr<flutter::TextureVariant> flutter_texture_;
     std::unique_ptr<TextureBridge> texture_bridge_;
     std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> event_sink_;

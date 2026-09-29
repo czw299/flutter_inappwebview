@@ -245,6 +245,8 @@ namespace flutter_inappwebview_plugin
 
     static bool isSslError(const COREWEBVIEW2_WEB_ERROR_STATUS& webErrorStatus);
   private:
+    // Own only the hidden composition host, never the reparented Flutter view.
+    HWND ownedCompositionWindow_ = nullptr;
     // custom_platform_view
     winrt::com_ptr<ABI::Windows::UI::Composition::IVisual> surface_;
     SurfaceSizeChangedCallback surfaceSizeChangedCallback_;

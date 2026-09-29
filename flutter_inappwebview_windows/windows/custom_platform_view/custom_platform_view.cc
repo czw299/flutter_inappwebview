@@ -1,5 +1,6 @@
 #include "../utils/log.h"
 #include "custom_platform_view.h"
+#include <wil/wrl.h>
 
 #include <flutter/event_stream_handler_functions.h>
 #include <flutter/method_result_functions.h>
@@ -145,6 +146,14 @@ namespace flutter_inappwebview_plugin
         }));
 #endif
 
+    // Focus strategy adapted from webview_flutter_windows (see THIRD_PARTY_NOTICES).
+    // Keep WebView2's input windows in the Flutter top-level window tree.
+    if (view->plugin && view->plugin->registrar->GetView()) {
+      flutter_view_hwnd_ = view->plugin->registrar->GetView()->GetNativeWindow();
+      failedLog(view->webViewController->put_ParentWindow(flutter_view_hwnd_));
+      RegisterFocusHandlers();
+    }
+
     texture_id_ = texture_registrar->RegisterTexture(flutter_texture_.get());
     texture_bridge_->SetOnFrameAvailable(
       [this]() { texture_registrar_->MarkTextureFrameAvailable(texture_id_); });
@@ -176,6 +185,9 @@ namespace flutter_inappwebview_plugin
         {
           event_sink_ = std::move(events);
           RegisterEventHandlers();
+          EmitEvent(flutter::EncodableMap{
+            {flutter::EncodableValue("type"), flutter::EncodableValue("focus")},
+            {flutter::EncodableValue("value"), flutter::EncodableValue(native_focus_)} });
           return nullptr;
         },
         [this](const flutter::EncodableValue* arguments)
@@ -199,8 +211,59 @@ namespace flutter_inappwebview_plugin
   CustomPlatformView::~CustomPlatformView()
   {
     debugLog("dealloc CustomPlatformView");
+    // A kept-alive WebView can outlive this bridge. Remove callbacks capturing it.
+    if (view && view->webViewController) {
+      view->webViewController->remove_GotFocus(got_focus_token_);
+      view->webViewController->remove_LostFocus(lost_focus_token_);
+      view->webViewController->remove_MoveFocusRequested(move_focus_token_);
+      ReleaseFocus();
+    }
+    UnregisterMethodCallHandler();
     event_sink_ = nullptr;
     texture_registrar_->UnregisterTexture(texture_id_, nullptr);
+  }
+
+  void CustomPlatformView::ReleaseFocus()
+  {
+    // Never let a delayed Dart request activate an app the user just left.
+    if (native_focus_ && IsWindow(flutter_view_hwnd_) &&
+      GetAncestor(GetForegroundWindow(), GA_ROOT) == GetAncestor(flutter_view_hwnd_, GA_ROOT)) {
+      SetFocus(flutter_view_hwnd_);
+    }
+    native_focus_ = false;
+  }
+
+  void CustomPlatformView::RegisterFocusHandlers()
+  {
+    using Microsoft::WRL::Callback;
+    auto changed = [this](bool focused) {
+      native_focus_ = focused;
+      EmitEvent(flutter::EncodableMap{
+        {flutter::EncodableValue("type"), flutter::EncodableValue("focus")},
+        {flutter::EncodableValue("value"), flutter::EncodableValue(focused)} });
+    };
+    failedLog(view->webViewController->add_GotFocus(
+      Callback<ICoreWebView2FocusChangedEventHandler>(
+        [changed](ICoreWebView2Controller*, IUnknown*) -> HRESULT {
+          changed(true); return S_OK;
+        }).Get(), &got_focus_token_));
+    failedLog(view->webViewController->add_LostFocus(
+      Callback<ICoreWebView2FocusChangedEventHandler>(
+        [changed](ICoreWebView2Controller*, IUnknown*) -> HRESULT {
+          changed(false); return S_OK;
+        }).Get(), &lost_focus_token_));
+    failedLog(view->webViewController->add_MoveFocusRequested(
+      Callback<ICoreWebView2MoveFocusRequestedEventHandler>(
+        [this](ICoreWebView2Controller*, ICoreWebView2MoveFocusRequestedEventArgs* args) -> HRESULT {
+          COREWEBVIEW2_MOVE_FOCUS_REASON reason;
+          if (FAILED(args->get_Reason(&reason))) return S_OK;
+          ReleaseFocus();
+          args->put_Handled(TRUE);
+          EmitEvent(flutter::EncodableMap{
+            {flutter::EncodableValue("type"), flutter::EncodableValue("focusTraversal")},
+            {flutter::EncodableValue("value"), flutter::EncodableValue(reason == COREWEBVIEW2_MOVE_FOCUS_REASON_PREVIOUS)} });
+          return S_OK;
+        }).Get(), &move_focus_token_));
   }
 
   void CustomPlatformView::RegisterEventHandlers()
@@ -232,6 +295,11 @@ namespace flutter_inappwebview_plugin
     std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result)
   {
     const auto& method_name = method_call.method_name();
+
+    if (method_name == "releaseFocus") {
+      ReleaseFocus();
+      return result->Success();
+    }
 
     // setCursorPos: [double x, double y]
     if (method_name.compare(kMethodSetCursorPos) == 0) {

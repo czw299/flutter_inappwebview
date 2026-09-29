@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import '../platform_util.dart';
 import '_static_channel.dart';
+import 'windows_focus_coordinator.dart';
 
 const Map<String, SystemMouseCursor> _cursors = {
   'none': SystemMouseCursors.none,
@@ -47,8 +48,7 @@ const Map<String, SystemMouseCursor> _cursors = {
   'zoomOut': SystemMouseCursors.zoomOut,
 };
 
-SystemMouseCursor _getCursorByName(String name) =>
-    _cursors[name] ?? SystemMouseCursors.basic;
+SystemMouseCursor _getCursorByName(String name) => _cursors[name] ?? SystemMouseCursors.basic;
 
 /// Pointer button type
 // Order must match InAppWebViewPointerEventKind (see in_app_webview.h)
@@ -56,15 +56,7 @@ enum PointerButton { none, primary, secondary, tertiary }
 
 /// Pointer Event kind
 // Order must match InAppWebViewPointerEventKind (see in_app_webview.h)
-enum InAppWebViewPointerEventKind {
-  activate,
-  down,
-  enter,
-  leave,
-  up,
-  update,
-  cancel,
-}
+enum InAppWebViewPointerEventKind { activate, down, enter, leave, up, update, cancel }
 
 /// Attempts to translate a button constant such as [kPrimaryMouseButton]
 /// to a [PointerButton]
@@ -89,20 +81,25 @@ class CustomFlutterViewControllerValue {
   final bool isInitialized;
 
   CustomFlutterViewControllerValue copyWith({bool? isInitialized}) {
-    return CustomFlutterViewControllerValue(
-      isInitialized: isInitialized ?? this.isInitialized,
-    );
+    return CustomFlutterViewControllerValue(isInitialized: isInitialized ?? this.isInitialized);
   }
 
   CustomFlutterViewControllerValue.uninitialized() : this(isInitialized: false);
 }
 
 /// Controls a WebView and provides streams for various change events.
-class CustomPlatformViewController
-    extends ValueNotifier<CustomFlutterViewControllerValue> {
+class CustomPlatformViewController extends ValueNotifier<CustomFlutterViewControllerValue> {
   Completer<void> _creatingCompleter = Completer<void>();
   int _textureId = 0;
   bool _isDisposed = false;
+  void Function(bool)? onNativeFocusChanged;
+  void Function(bool)? onFocusTraversal;
+
+  Future<void> releaseFocus() async {
+    if (!_isDisposed && value.isInitialized) {
+      await _methodChannel.invokeMethod('releaseFocus');
+    }
+  }
 
   Future<void> get ready => _creatingCompleter.future;
 
@@ -110,39 +107,31 @@ class CustomPlatformViewController
   late EventChannel _eventChannel;
   StreamSubscription? _eventStreamSubscription;
 
-  final StreamController<SystemMouseCursor> _cursorStreamController =
-      StreamController<SystemMouseCursor>.broadcast();
+  final StreamController<SystemMouseCursor> _cursorStreamController = StreamController<SystemMouseCursor>.broadcast();
 
   /// A stream reflecting the current cursor style.
   Stream<SystemMouseCursor> get _cursor => _cursorStreamController.stream;
 
-  CustomPlatformViewController()
-    : super(CustomFlutterViewControllerValue.uninitialized());
+  CustomPlatformViewController() : super(CustomFlutterViewControllerValue.uninitialized());
 
   /// Initializes the underlying platform view.
-  Future<void> initialize({
-    Function(int id)? onPlatformViewCreated,
-    dynamic arguments,
-  }) async {
+  Future<void> initialize({Function(int id)? onPlatformViewCreated, dynamic arguments}) async {
     if (_isDisposed) {
       return;
     }
-    _textureId = (await _pluginChannel.invokeMethod<int>(
-      'createInAppWebView',
-      arguments,
-    ))!;
+    _textureId = (await _pluginChannel.invokeMethod<int>('createInAppWebView', arguments))!;
 
-    _methodChannel = MethodChannel(
-      'com.pichillilorenzo/custom_platform_view_$_textureId',
-    );
-    _eventChannel = EventChannel(
-      'com.pichillilorenzo/custom_platform_view_${_textureId}_events',
-    );
-    _eventStreamSubscription = _eventChannel.receiveBroadcastStream().listen((
-      event,
-    ) {
+    _methodChannel = MethodChannel('com.pichillilorenzo/custom_platform_view_$_textureId');
+    _eventChannel = EventChannel('com.pichillilorenzo/custom_platform_view_${_textureId}_events');
+    _eventStreamSubscription = _eventChannel.receiveBroadcastStream().listen((event) {
       final map = event as Map<dynamic, dynamic>;
       switch (map['type']) {
+        case 'focus':
+          onNativeFocusChanged?.call(map['value'] == true);
+          break;
+        case 'focusTraversal':
+          onFocusTraversal?.call(map['value'] == true);
+          break;
         case 'cursorChanged':
           _cursorStreamController.add(_getCursorByName(map['value']));
           break;
@@ -208,17 +197,11 @@ class CustomPlatformViewController
       return;
     }
     assert(value.isInitialized);
-    return _methodChannel.invokeMethod('setCursorPos', [
-      position.dx,
-      position.dy,
-    ]);
+    return _methodChannel.invokeMethod('setCursorPos', [position.dx, position.dy]);
   }
 
   /// Indicates whether the specified [button] is currently down.
-  Future<void> _setPointerButtonState(
-    InAppWebViewPointerEventKind kind,
-    PointerButton button,
-  ) async {
+  Future<void> _setPointerButtonState(InAppWebViewPointerEventKind kind, PointerButton button) async {
     if (_isDisposed) {
       return;
     }
@@ -244,11 +227,7 @@ class CustomPlatformViewController
       return;
     }
     assert(value.isInitialized);
-    return _methodChannel.invokeMethod('setSize', [
-      size.width,
-      size.height,
-      scaleFactor,
-    ]);
+    return _methodChannel.invokeMethod('setSize', [size.width, size.height, scaleFactor]);
   }
 
   /// Sets the surface size to the provided [size].
@@ -257,11 +236,7 @@ class CustomPlatformViewController
       return;
     }
     assert(value.isInitialized);
-    return _methodChannel.invokeMethod('setPosition', [
-      position.dx,
-      position.dy,
-      scaleFactor,
-    ]);
+    return _methodChannel.invokeMethod('setPosition', [position.dx, position.dy, scaleFactor]);
   }
 }
 
@@ -293,8 +268,7 @@ class CustomPlatformView extends StatefulWidget {
   _CustomPlatformViewState createState() => _CustomPlatformViewState();
 }
 
-class _CustomPlatformViewState extends State<CustomPlatformView>
-    with PlatformUtilListener {
+class _CustomPlatformViewState extends State<CustomPlatformView> with PlatformUtilListener {
   final GlobalKey _key = GlobalKey();
   final _downButtons = <int, PointerButton>{};
 
@@ -304,6 +278,7 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
 
   final _controller = CustomPlatformViewController();
   final _focusNode = FocusNode();
+  late final _focusHandle = WindowsWebViewFocusHandle(release: _controller.releaseFocus);
 
   StreamSubscription? _cursorSubscription;
 
@@ -316,9 +291,22 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
     super.initState();
 
     _platformUtil.addListener(this);
+    WindowsFocusCoordinator.register(_focusHandle);
+    _controller.onNativeFocusChanged = (focused) {
+      if (mounted) WindowsFocusCoordinator.nativeFocusChanged(_focusHandle, focused);
+    };
+    _controller.onFocusTraversal = (backward) {
+      if (!mounted) return;
+      if (backward) {
+        _focusNode.previousFocus();
+      } else {
+        _focusNode.nextFocus();
+      }
+    };
 
     _controller.initialize(
       onPlatformViewCreated: (id) {
+        if (!mounted) return;
         widget.onPlatformViewCreated?.call(id);
         setState(() {});
       },
@@ -327,10 +315,7 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
 
     _listener = AppLifecycleListener(
       onStateChange: (state) {
-        if ([
-          AppLifecycleState.resumed,
-          AppLifecycleState.hidden,
-        ].contains(state)) {
+        if ([AppLifecycleState.resumed, AppLifecycleState.hidden].contains(state)) {
           _reportSurfaceSize();
           _reportWidgetPosition();
         }
@@ -359,7 +344,7 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
   @override
   Widget build(BuildContext context) {
     return Focus(
-      autofocus: true,
+      autofocus: false,
       focusNode: _focusNode,
       canRequestFocus: true,
       debugLabel: "flutter_inappwebview_windows_custom_platform_view",
@@ -391,13 +376,9 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
                   _reportSurfaceSize();
                   _reportWidgetPosition();
 
+                  WindowsFocusCoordinator.claimPointer(ev.pointer);
                   if (!_focusNode.hasFocus) {
                     _focusNode.requestFocus();
-                    Future.delayed(const Duration(milliseconds: 50), () {
-                      if (!_focusNode.hasFocus) {
-                        _focusNode.requestFocus();
-                      }
-                    });
                   }
 
                   _pointerKind = ev.kind;
@@ -413,10 +394,7 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
                   }
                   final button = _getButton(ev.buttons);
                   _downButtons[ev.pointer] = button;
-                  _controller._setPointerButtonState(
-                    InAppWebViewPointerEventKind.down,
-                    button,
-                  );
+                  _controller._setPointerButtonState(InAppWebViewPointerEventKind.down, button);
                 },
                 onPointerUp: (ev) {
                   _pointerKind = ev.kind;
@@ -432,20 +410,14 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
                   }
                   final button = _downButtons.remove(ev.pointer);
                   if (button != null) {
-                    _controller._setPointerButtonState(
-                      InAppWebViewPointerEventKind.up,
-                      button,
-                    );
+                    _controller._setPointerButtonState(InAppWebViewPointerEventKind.up, button);
                   }
                 },
                 onPointerCancel: (ev) {
                   _pointerKind = ev.kind;
                   final button = _downButtons.remove(ev.pointer);
                   if (button != null) {
-                    _controller._setPointerButtonState(
-                      InAppWebViewPointerEventKind.cancel,
-                      button,
-                    );
+                    _controller._setPointerButtonState(InAppWebViewPointerEventKind.cancel, button);
                   }
                 },
                 onPointerMove: (ev) {
@@ -464,10 +436,7 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
                 },
                 onPointerSignal: (signal) {
                   if (signal is PointerScrollEvent) {
-                    _controller._setScrollDelta(
-                      -signal.scrollDelta.dx,
-                      -signal.scrollDelta.dy,
-                    );
+                    _controller._setScrollDelta(-signal.scrollDelta.dx, -signal.scrollDelta.dy);
                   }
                 },
                 onPointerPanZoomUpdate: (ev) {
@@ -477,22 +446,13 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
                   cursor: _cursor,
                   onEnter: (ev) {
                     final button = _getButton(ev.buttons);
-                    _controller._setPointerButtonState(
-                      InAppWebViewPointerEventKind.enter,
-                      button,
-                    );
+                    _controller._setPointerButtonState(InAppWebViewPointerEventKind.enter, button);
                   },
                   onExit: (ev) {
                     final button = _getButton(ev.buttons);
-                    _controller._setPointerButtonState(
-                      InAppWebViewPointerEventKind.leave,
-                      button,
-                    );
+                    _controller._setPointerButtonState(InAppWebViewPointerEventKind.leave, button);
                   },
-                  child: Texture(
-                    textureId: _controller._textureId,
-                    filterQuality: widget.filterQuality,
-                  ),
+                  child: Texture(textureId: _controller._textureId, filterQuality: widget.filterQuality),
                 ),
               )
             : const SizedBox(),
@@ -504,12 +464,7 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
     final box = _key.currentContext?.findRenderObject() as RenderBox?;
     if (box != null) {
       await _controller.ready;
-      unawaited(
-        _controller._setSize(
-          box.size,
-          widget.scaleFactor ?? window.devicePixelRatio,
-        ),
-      );
+      unawaited(_controller._setSize(box.size, widget.scaleFactor ?? window.devicePixelRatio));
     }
   }
 
@@ -518,17 +473,15 @@ class _CustomPlatformViewState extends State<CustomPlatformView>
     if (box != null) {
       await _controller.ready;
       final position = box.localToGlobal(Offset.zero);
-      unawaited(
-        _controller._setPosition(
-          position,
-          widget.scaleFactor ?? window.devicePixelRatio,
-        ),
-      );
+      unawaited(_controller._setPosition(position, widget.scaleFactor ?? window.devicePixelRatio));
     }
   }
 
   @override
   void dispose() {
+    WindowsFocusCoordinator.unregister(_focusHandle);
+    _controller.onNativeFocusChanged = null;
+    _controller.onFocusTraversal = null;
     super.dispose();
     _platformUtil.removeListener(this);
     _cursorSubscription?.cancel();

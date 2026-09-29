@@ -67,6 +67,7 @@ namespace flutter_inappwebview_plugin
     }
 
     if (this->webViewCompositionController) {
+      ownedCompositionWindow_ = parentWindow;
       if (!createSurface(parentWindow, plugin->inAppWebViewManager->compositor())) {
         std::cerr << "Cannot create InAppWebView surface." << std::endl;
       }
@@ -3597,11 +3598,10 @@ namespace flutter_inappwebview_plugin
       auto scaled_width = width * scale_factor;
       auto scaled_height = height * scale_factor;
 
-      RECT bounds;
-      bounds.left = 0;
-      bounds.top = 0;
-      bounds.right = static_cast<LONG>(scaled_width);
-      bounds.bottom = static_cast<LONG>(scaled_height);
+      RECT bounds = {};
+      webViewController->get_Bounds(&bounds);
+      bounds.right = bounds.left + static_cast<LONG>(scaled_width);
+      bounds.bottom = bounds.top + static_cast<LONG>(scaled_height);
 
       surface_->put_Size({ scaled_width, scaled_height });
 
@@ -3631,21 +3631,15 @@ namespace flutter_inappwebview_plugin
       auto scaled_x = static_cast<int>(x * scale_factor);
       auto scaled_y = static_cast<int>(y * scale_factor);
 
-      auto titleBarHeight = ((GetSystemMetrics(SM_CYCAPTION) + GetSystemMetrics(SM_CYFRAME)) * scale_factor) + GetSystemMetrics(SM_CXPADDEDBORDER);
-      auto borderWidth = (GetSystemMetrics(SM_CXBORDER) + GetSystemMetrics(SM_CXPADDEDBORDER)) * scale_factor;
-
-      RECT flutterWindowRect;
-      HWND flutterWindowHWnd = plugin->registrar->GetView()->GetNativeWindow();
-      GetWindowRect(flutterWindowHWnd, &flutterWindowRect);
-
-      HWND webViewHWnd;
-      if (succeededOrLog(webViewController->get_ParentWindow(&webViewHWnd))) {
-        ::SetWindowPos(webViewHWnd,
-          nullptr,
-          static_cast<int>(flutterWindowRect.left + scaled_x - borderWidth),
-          static_cast<int>(flutterWindowRect.top + scaled_y - titleBarHeight),
-          0, 0,
-          SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+      // The controller is parented to Flutter's client area. Moving its parent
+      // would move the app itself; Bounds positions native popups instead.
+      RECT bounds = {};
+      if (SUCCEEDED(webViewController->get_Bounds(&bounds))) {
+        const LONG width = bounds.right - bounds.left;
+        const LONG height = bounds.bottom - bounds.top;
+        bounds = { scaled_x, scaled_y, scaled_x + width, scaled_y + height };
+        failedLog(webViewController->put_Bounds(bounds));
+        failedLog(webViewController->NotifyParentWindowPositionChanged());
       }
     }
   }
@@ -4127,14 +4121,12 @@ namespace flutter_inappwebview_plugin
     if (webView) {
       failedLog(webView->Stop());
     }
-    HWND parentWindow = nullptr;
-    if (webViewCompositionController && webViewController && succeededOrLog(webViewController->get_ParentWindow(&parentWindow))) {
-      // if it's an InAppWebView (so webViewCompositionController will be not a nullptr!),
-      // then destroy the Window created with it
-      DestroyWindow(parentWindow);
-    }
     if (webViewController) {
       failedLog(webViewController->Close());
+    }
+    if (ownedCompositionWindow_) {
+      DestroyWindow(ownedCompositionWindow_);
+      ownedCompositionWindow_ = nullptr;
     }
     for (auto& [id, channel] : webMessageChannels_) {
       if (channel) {
