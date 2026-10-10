@@ -21,7 +21,7 @@ namespace flutter_inappwebview_plugin
 {
   InAppWebViewManager::InAppWebViewManager(const FlutterInappwebviewWindowsPlugin* plugin)
     : plugin(plugin),
-    ChannelDelegate(plugin->registrar->messenger(), InAppWebViewManager::METHOD_CHANNEL_NAME)
+    ChannelDelegate(plugin->messenger(), InAppWebViewManager::METHOD_CHANNEL_NAME)
   {
     {
       const std::lock_guard<std::mutex> lock(shared_resources_mutex_);
@@ -133,9 +133,9 @@ namespace flutter_inappwebview_plugin
       windowClass_.hInstance, nullptr);
 
     if (keepAliveId.has_value() && map_contains(keepAliveWebViews, keepAliveId.value())) {
-      auto webView = std::move(keepAliveWebViews.at(keepAliveId.value())->view);
+      auto webView = keepAliveWebViews.at(keepAliveId.value())->DetachWebView();
       keepAliveWebViews.erase(keepAliveId.value());
-      auto customPlatformView = std::make_unique<CustomPlatformView>(plugin->registrar->messenger(),
+      auto customPlatformView = std::make_unique<CustomPlatformView>(plugin->messenger(),
         plugin->registrar->texture_registrar(),
         graphics_context(),
         hwnd,
@@ -188,7 +188,7 @@ namespace flutter_inappwebview_plugin
             windowWebViews.erase(windowId.value());
           }
 
-          auto customPlatformView = std::make_unique<CustomPlatformView>(plugin->registrar->messenger(),
+          auto customPlatformView = std::make_unique<CustomPlatformView>(plugin->messenger(),
             plugin->registrar->texture_registrar(),
             graphics_context(),
             hwnd,

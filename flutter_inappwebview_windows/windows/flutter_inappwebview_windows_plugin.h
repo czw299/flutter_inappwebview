@@ -2,6 +2,7 @@
 #define FLUTTER_PLUGIN_FLUTTER_INAPPWEBVIEW_PLUGIN_PLUGIN_H_
 
 #include <flutter/plugin_registrar_windows.h>
+#include "utils/shutdown_aware_messenger.h"
 
 namespace flutter_inappwebview_plugin
 {
@@ -13,7 +14,11 @@ namespace flutter_inappwebview_plugin
   class PlatformUtil;
 
   class FlutterInappwebviewWindowsPlugin : public flutter::Plugin {
+  private:
+    // Declared first so it outlives all managers and their channels.
+    std::unique_ptr<ShutdownAwareMessenger> messenger_;
   public:
+    flutter::BinaryMessenger* messenger() const { return messenger_.get(); }
     flutter::PluginRegistrarWindows* registrar;
     std::unique_ptr<WebViewEnvironmentManager> webViewEnvironmentManager;
     std::unique_ptr<InAppWebViewManager> inAppWebViewManager;

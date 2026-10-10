@@ -42,6 +42,7 @@ add_custom_command(
 list(APPEND PLUGIN_SOURCES
   "flutter_inappwebview_windows_plugin.cpp"
   "flutter_inappwebview_windows_plugin.h"
+  "utils/shutdown_aware_messenger.h"
   "utils/log.h"
   "utils/defer.h"
   "utils/timer.h"

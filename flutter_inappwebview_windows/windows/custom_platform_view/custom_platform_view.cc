@@ -200,6 +200,9 @@ namespace flutter_inappwebview_plugin
 
   void CustomPlatformView::UnregisterMethodCallHandler() const
   {
+    if (event_channel_) {
+      event_channel_->SetStreamHandler(nullptr);
+    }
     if (method_channel_) {
       method_channel_->SetMethodCallHandler(nullptr);
       if (view && view->channelDelegate) {
@@ -208,18 +211,39 @@ namespace flutter_inappwebview_plugin
     }
   }
 
-  CustomPlatformView::~CustomPlatformView()
+  std::shared_ptr<InAppWebView> CustomPlatformView::DetachWebView()
   {
-    debugLog("dealloc CustomPlatformView");
-    // A kept-alive WebView can outlive this bridge. Remove callbacks capturing it.
+    // Remove callbacks before transferring ownership: the old bridge must not
+    // remain captured by the WebView that the next bridge will reuse.
+    UnregisterViewCallbacks();
+    auto webView = std::move(view);
+    // With view detached, only the old bridge channels are unregistered.
+    // The reused WebView's channel delegate must remain registered.
+    UnregisterMethodCallHandler();
+    return webView;
+  }
+
+  void CustomPlatformView::UnregisterViewCallbacks()
+  {
+    event_sink_ = nullptr;
+    if (view) {
+      view->onSurfaceSizeChanged(nullptr);
+      view->onCursorChanged(nullptr);
+    }
     if (view && view->webViewController) {
       view->webViewController->remove_GotFocus(got_focus_token_);
       view->webViewController->remove_LostFocus(lost_focus_token_);
       view->webViewController->remove_MoveFocusRequested(move_focus_token_);
       ReleaseFocus();
     }
-    UnregisterMethodCallHandler();
-    event_sink_ = nullptr;
+  }
+
+  CustomPlatformView::~CustomPlatformView()
+  {
+    debugLog("dealloc CustomPlatformView");
+    UnregisterViewCallbacks();
+    // The registrar can destroy this bridge after the engine's messenger has
+    // shut down. Unregister channels in explicit dispose/detach paths instead.
     texture_registrar_->UnregisterTexture(texture_id_, nullptr);
   }
 

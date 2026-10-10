@@ -27,7 +27,7 @@ namespace flutter_inappwebview_plugin
   }
 
   FlutterInappwebviewWindowsPlugin::FlutterInappwebviewWindowsPlugin(flutter::PluginRegistrarWindows* registrar)
-    : registrar(registrar)
+    : messenger_(std::make_unique<ShutdownAwareMessenger>(registrar->messenger())), registrar(registrar)
   {
     webViewEnvironmentManager = std::make_unique<WebViewEnvironmentManager>(this);
     inAppWebViewManager = std::make_unique<InAppWebViewManager>(this);
@@ -45,6 +45,9 @@ namespace flutter_inappwebview_plugin
 
   FlutterInappwebviewWindowsPlugin::~FlutterInappwebviewWindowsPlugin()
   {
+    // Nested WebView objects also unregister channels from their destructors.
+    // Disable forwarding before any manager or WebView starts tearing down.
+    messenger_->Shutdown();
     if (registrar) {
       registrar->UnregisterTopLevelWindowProcDelegate(window_proc_id);
     }

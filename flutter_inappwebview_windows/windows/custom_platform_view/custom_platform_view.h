@@ -30,7 +30,9 @@ namespace flutter_inappwebview_plugin
 
     int64_t texture_id() const { return texture_id_; }
 
+    // Called only while the engine is running.
     void UnregisterMethodCallHandler() const;
+    std::shared_ptr<InAppWebView> DetachWebView();
   private:
     HWND hwnd_;
     HWND flutter_view_hwnd_ = nullptr;
@@ -39,6 +41,7 @@ namespace flutter_inappwebview_plugin
     EventRegistrationToken lost_focus_token_ = {};
     EventRegistrationToken move_focus_token_ = {};
     void RegisterFocusHandlers();
+    void UnregisterViewCallbacks();
     void ReleaseFocus();
     std::unique_ptr<flutter::TextureVariant> flutter_texture_;
     std::unique_ptr<TextureBridge> texture_bridge_;
