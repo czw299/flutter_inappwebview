@@ -3,6 +3,7 @@ package com.pichillilorenzo.flutter_inappwebview_android.in_app_browser;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.TypedArray;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
@@ -26,6 +27,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.view.menu.MenuBuilder;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.graphics.Insets;
+import androidx.core.graphics.ColorUtils;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -249,6 +251,22 @@ public class InAppBrowserActivity extends AppCompatActivity implements InAppBrow
       if (customSettings.toolbarTopFixedTitle != null && !customSettings.toolbarTopFixedTitle.isEmpty())
         actionBar.setTitle(customSettings.toolbarTopFixedTitle);
     }
+    updateStatusBarAppearance();
+  }
+
+  private void updateStatusBarAppearance() {
+    // The transparent status bar is drawn over the toolbar background.
+    TypedArray colors = getTheme().obtainStyledAttributes(new int[]{androidx.appcompat.R.attr.colorPrimary});
+    int backgroundColor = colors.getColor(0, Color.WHITE);
+    colors.recycle();
+    if (toolbar != null && toolbar.getBackground() instanceof ColorDrawable) {
+      backgroundColor = ((ColorDrawable) toolbar.getBackground()).getColor();
+    }
+    backgroundColor = ColorUtils.compositeColors(backgroundColor, Color.WHITE);
+    boolean useDarkIcons = ColorUtils.calculateContrast(Color.BLACK, backgroundColor) >=
+            ColorUtils.calculateContrast(Color.WHITE, backgroundColor);
+    WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+            .setAppearanceLightStatusBars(useDarkIcons);
   }
 
   @SuppressLint("RestrictedApi")
@@ -560,6 +578,7 @@ public class InAppBrowserActivity extends AppCompatActivity implements InAppBrow
     }
 
     customSettings = newSettings;
+    updateStatusBarAppearance();
   }
 
   public Map<String, Object> getCustomSettingsMap() {
